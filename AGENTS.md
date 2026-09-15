@@ -6,6 +6,7 @@ This project is at the requirements stage for 人生支线 (SideQuest), a respon
 
 - `docs/1.人生支线产品需求分析文档.md`: primary product specification, including MVP scope, data models, requirements (`FR`), and acceptance criteria (`AC`).
 - `docs/2.人生支线技术架构与模块拆分.md`: proposed technology stack, architecture, module dependencies, development tasks, and unresolved decisions.
+- `docs/3.开发前准备清单.md`: verified local tools, setup prerequisites, responsibilities, and readiness checks.
 - `docs/`: place supporting design decisions, implementation plans, and validation records here. Contributor guidance lives in this `AGENTS.md`.
 
 No source, test, or asset directories exist yet. Document their locations when scaffolding the application.
