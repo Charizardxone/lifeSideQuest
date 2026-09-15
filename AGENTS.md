@@ -6,7 +6,6 @@ This project is at the requirements stage for 人生支线 (SideQuest), a respon
 
 - `docs/1.人生支线产品需求分析文档.md`: primary product specification, including MVP scope, data models, requirements (`FR`), and acceptance criteria (`AC`).
 - `docs/2.人生支线技术架构与模块拆分.md`: proposed technology stack, architecture, module dependencies, development tasks, and unresolved decisions.
-- `docs/3.开发前准备清单.md`: verified local tools, setup prerequisites, responsibilities, and readiness checks.
 - `docs/`: place supporting design decisions, implementation plans, and validation records here. Contributor guidance lives in this `AGENTS.md`.
 
 No source, test, or asset directories exist yet. Document their locations when scaffolding the application.
@@ -45,3 +44,5 @@ PRs should explain the change, reference affected FR/AC identifiers and related 
 ## Product & Privacy Constraints
 
 Preserve anonymous first use and one-click recommendations without prerequisite filters. Keep completion records private by default; exclude note contents, photos, and precise location from analytics. Keep changes within the documented MVP scope.
+
+Confirmed on 2026-09-15: MVP personal records, photos, and growth data stay in IndexedDB in the current browser and site origin. Do not add account login, cloud photo uploads, or personal-record cloud sync. Provide export and deletion, and explain that clearing site data loses local records; cloud backup and cross-device recovery are not included. Other unresolved product decisions require discussion with the user before implementation.
