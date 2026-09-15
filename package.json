@@ -1,0 +1,38 @@
+{
+  "name": "sidequest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.1",
+  "engines": {
+    "node": "24.16.x"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @sidequest/web --filter @sidequest/content dev",
+    "dev:web": "pnpm --filter @sidequest/web dev",
+    "dev:content": "pnpm --filter @sidequest/content dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tools.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:migrate": "pnpm --filter @sidequest/content db:migrate",
+    "db:migrate:create": "pnpm --filter @sidequest/content db:migrate:create",
+    "db:migrate:status": "pnpm --filter @sidequest/content db:migrate:status",
+    "db:check": "pnpm --filter @sidequest/content db:check"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.4",
+    "eslint": "10.10.0",
+    "fake-indexeddb": "6.2.5",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "4.1.11"
+  }
+}
