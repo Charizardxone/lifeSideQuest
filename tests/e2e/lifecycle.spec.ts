@@ -45,6 +45,63 @@ async function acceptOrdinary(page: Page) {
   await expect(page).toHaveURL(/\/executions\//);
 }
 
+test('themes persist, synchronize and keep quest progress intact', async ({ page, context }) => {
+  await mockContent(page);
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'daily');
+  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await acceptOrdinary(page);
+  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
+  const second = await context.newPage();
+  await mockContent(second);
+  await second.goto('/settings');
+  await page.goto('/settings');
+  await page.getByRole('radio', { name: '复古像素 RPG' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
+  await expect(second.getByRole('radio', { name: '复古像素 RPG' })).toBeChecked();
+  await page.reload();
+  await expect(page.getByRole('radio', { name: '复古像素 RPG' })).toBeChecked();
+  await page.goto('/profile');
+  await expect(page.getByText('10 XP', { exact: false }).first()).toBeVisible();
+  await page.screenshot({ path: 'docs/validation/images/pixel-profile.png', fullPage: true });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await page.screenshot({ path: 'docs/validation/images/pixel-home-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.screenshot({ path: 'docs/validation/images/pixel-home-mobile.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.goto('/settings');
+  await page.screenshot({
+    path: 'docs/validation/images/theme-settings-mobile.png',
+    fullPage: true,
+  });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('radio', { name: '简约日常' }).check();
+  await expect(second.locator('html')).toHaveAttribute('data-theme', 'daily');
+  await page.goto('/archive');
+  await expect(page.getByRole('link', { name: /在窗边发现三种颜色/ })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'daily');
+});
+
+test('theme preference handles invalid or unavailable storage', async ({ page }) => {
+  await mockContent(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('sidequest-theme-v1', 'unknown-future-theme');
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'sidequest-theme-v1') throw new DOMException('Blocked', 'SecurityError');
+      original.call(this, key, value);
+    };
+  });
+  await page.goto('/settings');
+  await expect(page.getByRole('radio', { name: '简约日常' })).toBeChecked();
+  await page.getByRole('radio', { name: '复古像素 RPG' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
+  await expect(page.getByText('当前浏览器无法保存外观偏好，本次切换仍然有效。')).toBeVisible();
+});
+
 test('statistics stay local and preserve completion-time note flags', async ({ page }) => {
   const posts: string[] = [];
   page.on('request', (request) => {

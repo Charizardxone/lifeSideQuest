@@ -14,6 +14,7 @@ import { db, usePageEvent, useRuntime } from './runtime';
 import { PhotoView, QuestCard, RecordForm, useAction } from './components';
 import { recommend, restartRecommendations } from '../services/recommendations';
 import { deletePersonalData, exportArchive } from '../services/export';
+import { PixelScene, ThemePicker } from './theme';
 
 const formatDate = (value: string) => new Date(value).toLocaleString('zh-CN');
 const statusLabels = { in_progress: '进行中', completed: '已完成', abandoned: '已放弃' };
@@ -30,6 +31,7 @@ export function HomePage() {
   return (
     <section className="page">
       <div className="hero">
+        <PixelScene />
         {active?.map((quest) => (
           <p className="notice" key={quest.id}>
             正在进行：<Link to={`/executions/${quest.id}`}>{quest.snapshot.title}</Link>（
@@ -543,6 +545,7 @@ export function SettingsPage() {
   return (
     <section className="page">
       <h1>设置</h1>
+      <ThemePicker />
       <p>个人记录和照片仅保存在当前浏览器。清理本站数据会丢失记录，暂不支持云备份或跨设备恢复。</p>
       <h2>导出私人存档</h2>
       <p>ZIP 包含 JSON 数据和照片，含私密信息，请妥善保管；当前不支持导入恢复。</p>
