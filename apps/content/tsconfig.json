@@ -18,6 +18,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "scripts/seed-starter-quests.ts",
+    "scripts/seed-expansion-quests.ts",
     "scripts/data/**/*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"

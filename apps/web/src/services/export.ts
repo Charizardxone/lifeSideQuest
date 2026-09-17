@@ -36,7 +36,7 @@ export async function exportArchive(db: LocalDatabase): Promise<Blob> {
     ),
   );
   files['README.txt'] = strToU8(
-    '人生支线私密本地导出。data.json 保存身份、任务快照、存档、流水和关联标识；photos/ 保存照片。请妥善保管。本版本不提供自动导入恢复。',
+    '人生支线私密本地导出。data.json 保存身份、任务快照、存档、流水和关联标识；photos/ 保存照片。请妥善保管。可在人生支线设置页选择此 ZIP，预览并明确确认后替换恢复全部个人记录；导入前请先导出当前需要保留的数据。',
   );
   const bytes = await new Promise<Uint8Array>((resolve, reject) =>
     zip(files, { level: 1 }, (error, result) => (error ? reject(error) : resolve(result))),

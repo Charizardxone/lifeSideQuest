@@ -10,6 +10,7 @@ import {
   Empty,
   ExecutionPage,
   HomePage,
+  LibraryPage,
   MyQuests,
   ProfilePage,
   QuestDetail,
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'library', element: <LibraryPage /> },
       { path: 'quests', element: <MyQuests /> },
       { path: 'quests/:questId', element: <QuestDetail /> },
       { path: 'executions/:id', element: <ExecutionPage /> },

@@ -24,3 +24,19 @@ export function recommend(tasks: QuestSnapshot[], storage: Storage, random = Mat
 export function restartRecommendations(storage: Storage) {
   storage.removeItem(key);
 }
+
+const currentKey = 'sidequest-current-recommendation-v1';
+/** Store only the public quest ID; resolve against the current catalog after synchronization. */
+export function currentRecommendation(tasks: QuestSnapshot[], storage: Storage) {
+  const id = storage.getItem(currentKey);
+  if (id !== null) return tasks.find((task) => task.questId === id) ?? null;
+  return chooseRecommendation(tasks, storage);
+}
+export function chooseRecommendation(tasks: QuestSnapshot[], storage: Storage) {
+  const quest = recommend(tasks, storage);
+  storage.setItem(currentKey, quest?.questId ?? '');
+  return quest;
+}
+export function clearRecommendation(storage: Storage) {
+  storage.removeItem(currentKey);
+}

@@ -45,28 +45,34 @@ async function acceptOrdinary(page: Page) {
   await expect(page).toHaveURL(/\/executions\//);
 }
 
-test('themes persist, synchronize and keep quest progress intact', async ({ page, context }) => {
+test('pixel town ignores legacy theme preferences and keeps quest progress intact', async ({
+  page,
+  context,
+}) => {
   await mockContent(page);
+  await page.addInitScript(() => localStorage.setItem('sidequest-theme-v1', 'daily'));
   await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'daily');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   await acceptOrdinary(page);
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
   const second = await context.newPage();
   await mockContent(second);
   await second.goto('/settings');
   await page.goto('/settings');
-  await page.getByRole('radio', { name: '复古像素 RPG' }).check();
+  await expect(page.getByRole('radio')).toHaveCount(0);
+  await expect(page.getByText('简约日常')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
-  await expect(second.getByRole('radio', { name: '复古像素 RPG' })).toBeChecked();
+  await expect(second.locator('html')).toHaveAttribute('data-theme', 'pixel');
   await page.reload();
-  await expect(page.getByRole('radio', { name: '复古像素 RPG' })).toBeChecked();
+  await expect(page.getByText('温暖像素小镇', { exact: true })).toBeVisible();
   await page.goto('/profile');
   await expect(page.getByText('10 XP', { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: 'docs/validation/images/pixel-profile.png', fullPage: true });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   await page.screenshot({ path: 'docs/validation/images/pixel-home-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.screenshot({ path: 'docs/validation/images/pixel-home-mobile.png', fullPage: true });
@@ -77,15 +83,16 @@ test('themes persist, synchronize and keep quest progress intact', async ({ page
     fullPage: true,
   });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('radio', { name: '简约日常' }).check();
-  await expect(second.locator('html')).toHaveAttribute('data-theme', 'daily');
+  await page.evaluate(() => localStorage.setItem('sidequest-theme-v1', 'pixel'));
+  await page.evaluate(() => localStorage.setItem('sidequest-theme-v1', 'daily'));
+  await expect(second.locator('html')).toHaveAttribute('data-theme', 'pixel');
   await page.goto('/archive');
   await expect(page.getByRole('link', { name: /在窗边发现三种颜色/ })).toBeVisible();
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'daily');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
 });
 
-test('theme preference handles invalid or unavailable storage', async ({ page }) => {
+test('pixel town does not require theme preference storage', async ({ page }) => {
   await mockContent(page);
   await page.addInitScript(() => {
     localStorage.setItem('sidequest-theme-v1', 'unknown-future-theme');
@@ -96,10 +103,12 @@ test('theme preference handles invalid or unavailable storage', async ({ page })
     };
   });
   await page.goto('/settings');
-  await expect(page.getByRole('radio', { name: '简约日常' })).toBeChecked();
-  await page.getByRole('radio', { name: '复古像素 RPG' }).check();
+  await expect(page.getByText('温暖像素小镇', { exact: true })).toBeVisible();
+  await expect(page.getByRole('radio')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
-  await expect(page.getByText('当前浏览器无法保存外观偏好，本次切换仍然有效。')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pixel');
 });
 
 test('statistics stay local and preserve completion-time note flags', async ({ page }) => {
@@ -109,9 +118,10 @@ test('statistics stay local and preserve completion-time note flags', async ({ p
   });
   await mockContent(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   await acceptOrdinary(page);
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
   await page.getByLabel('一句记录（可跳过）').fill('完成后才补记，不改变完成时统计');
   await page.getByRole('button', { name: '保存记录', exact: true }).click();
@@ -130,9 +140,11 @@ test('photo compression, editing and removal keep rewards unchanged', async ({ p
   await page.setViewportSize({ width: 375, height: 812 });
   await mockContent(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   await page.screenshot({ path: 'docs/validation/images/MVP-mobile.png', fullPage: true });
   await acceptOrdinary(page);
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   const image = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 2000;
@@ -148,7 +160,7 @@ test('photo compression, editing and removal keep rewards unchanged', async ({ p
     buffer: Buffer.from(image, 'base64'),
   });
   await expect(page.getByText(/已准备照片/)).toBeVisible();
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await page.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect(page.getByRole('img', { name: '这次经历的私人照片' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('img', { name: '这次经历的私人照片' })).toBeVisible();
@@ -165,7 +177,7 @@ test('previously visited app starts offline and completes an accepted ordinary q
 }) => {
   await mockContent(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   await acceptOrdinary(page);
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -177,9 +189,9 @@ test('previously visited app starts offline and completes an accepted ordinary q
   await page.unroute('**/api/public/catalog');
   await page.unroute('**/api/public/daily');
   await page.reload();
-  await expect(page.getByRole('button', { name: '确认完成（不可撤销）' })).toBeVisible();
-  await page.getByLabel('一句记录（可跳过）').fill('离线也能记录');
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await expect(page.getByRole('button', { name: '我完成了' })).toBeVisible();
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
 });
 
@@ -197,9 +209,10 @@ test('persistent browser restart retains task and reward history', async ({
     let page = context.pages()[0]!;
     await mockContent(page);
     await page.goto('/');
-    await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
     await acceptOrdinary(page);
-    await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+    await page.getByRole('button', { name: '我完成了' }).click();
+    await page.getByRole('link', { name: '查看存档', exact: true }).click();
     await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
     await context.close();
     context = await playwright.chromium.launchPersistentContext(directory, {
@@ -218,17 +231,18 @@ test('persistent browser restart retains task and reward history', async ({
 test('complete, reload, edit, repeat, export and reset a private archive', async ({ page }) => {
   await mockContent(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: '随机一条支线', exact: true }).click();
-  await page.getByRole('button', { name: '换一个', exact: true }).click();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '换一条', exact: true }).click();
   await expect(page.getByText('这一轮已经全部看过了。')).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: '随机一条支线', exact: true }).click();
   await expect(page.getByText('这一轮已经全部看过了。')).toBeVisible();
   await acceptOrdinary(page);
-  await page.getByLabel('一句记录（可跳过）').fill('属于我的第一条记忆');
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   await expect(page).toHaveURL(/\/archive\//);
+  await page.getByLabel('一句记录（可跳过）').fill('属于我的第一条记忆');
+  await page.getByRole('button', { name: '保存记录', exact: true }).click();
+  await expect(page.getByText('记录已保存。')).toBeVisible();
   await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
   await page.reload();
   await expect(page.getByLabel('一句记录（可跳过）')).toHaveValue('属于我的第一条记忆');
@@ -236,7 +250,8 @@ test('complete, reload, edit, repeat, export and reset a private archive', async
   await page.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect(page.getByText('记录已保存。')).toBeVisible();
   await acceptOrdinary(page);
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   await expect(page.getByText(/已完成 · \+5 XP/)).toBeVisible();
   await page.getByRole('link', { name: '角色卡', exact: true }).click();
   await expect(page.getByText('15 XP · 2 次完成')).toBeVisible();
@@ -256,7 +271,7 @@ test('complete, reload, edit, repeat, export and reset a private archive', async
 test('daily and ordinary coexist and unfinished daily expires at midnight', async ({ page }) => {
   await mockContent(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   await acceptOrdinary(page);
   const ordinaryUrl = page.url();
   await page.goto('/daily');
@@ -268,14 +283,15 @@ test('daily and ordinary coexist and unfinished daily expires at midnight', asyn
   await page.clock.runFor(1500);
   await expect(page.getByText('今日支线已过期，自动放弃；没有发奖或增加完成次数。')).toBeVisible();
   await page.goto(ordinaryUrl);
-  await page.getByRole('button', { name: '确认完成（不可撤销）' }).click();
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
   await expect(page.getByText(/已完成 · \+10 XP/)).toBeVisible();
 });
 
 test('two tabs share ordinary slot and react to reset', async ({ page, context }) => {
   await mockContent(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: '随机一条支线', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
   const second = await context.newPage();
   await mockContent(second);
   await acceptOrdinary(page);
@@ -285,5 +301,84 @@ test('two tabs share ordinary slot and react to reset', async ({ page, context }
   await page.goto('/settings');
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: '确认删除个人数据' }).click();
-  await expect(second.getByRole('alert')).toContainText('本地数据已重置');
+  await expect(second.getByRole('alert')).toContainText(/本地数据已.*重置/);
+});
+
+test('export, preview, cancel and replace from ZIP restores photos and rewards without duplication', async ({
+  page,
+  context,
+}) => {
+  await mockContent(page);
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: '接取支线', exact: true })).toBeEnabled();
+  await acceptOrdinary(page);
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await page.getByRole('link', { name: '查看存档', exact: true }).click();
+  await page.getByLabel('一句记录（可跳过）').fill('要恢复的原始记录');
+  await page
+    .getByLabel('照片（可跳过，仅保存在本机）')
+    .setInputFiles('apps/web/public/art/town-dusk.png');
+  await expect(page.getByText(/已准备照片/)).toBeVisible();
+  await page.getByRole('button', { name: '保存记录', exact: true }).click();
+  await expect(page.getByText('记录已保存。')).toBeVisible();
+  await page.goto('/settings');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出全部记录', exact: true }).click();
+  const backupPath = await (await download).path();
+  await acceptOrdinary(page);
+  await page.getByRole('button', { name: '我完成了' }).click();
+  await expect(page.getByText('已完成 · +5 XP', { exact: true })).toBeVisible();
+  await page.goto('/profile');
+  await expect(page.getByText('15 XP · 2 次完成')).toBeVisible();
+  const second = await context.newPage();
+  await mockContent(second);
+  await second.goto('/profile');
+  await expect(second.getByText('15 XP · 2 次完成')).toBeVisible();
+  await page.goto('/settings');
+  await page.getByLabel('选择人生支线 ZIP 备份').setInputFiles({
+    name: 'broken.zip',
+    mimeType: 'application/zip',
+    buffer: Buffer.from('broken archive'),
+  });
+  await expect(page.getByRole('alert')).toContainText('ZIP');
+  await expect(page.getByRole('button', { name: '确认替换并导入' })).toHaveCount(0);
+  await page.getByLabel('选择人生支线 ZIP 备份').setInputFiles(backupPath);
+  await expect(page.getByText(/当前将被替换：2 条任务、2 条完成存档/)).toBeVisible();
+  await expect(page.getByText(/备份将恢复：1 条任务、1 条完成存档、1 张照片/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '确认替换并导入' })).toBeDisabled();
+  await page.getByRole('button', { name: '取消导入' }).click();
+  await expect(page.getByRole('heading', { name: '导入预览' })).toHaveCount(0);
+  await page.goto('/profile');
+  await expect(page.getByText('15 XP · 2 次完成')).toBeVisible();
+  await page.goto('/settings');
+  await page.getByLabel('选择人生支线 ZIP 备份').setInputFiles(backupPath);
+  await expect(page.getByRole('heading', { name: '导入预览' })).toBeVisible();
+  await page
+    .getByRole('region', { name: '导入私人存档' })
+    .screenshot({ path: 'docs/validation/images/archive-import-preview.png' });
+  await page
+    .getByRole('checkbox', { name: '我确认用此备份替换全部个人记录，已导出需要保留的数据' })
+    .check();
+  await page.getByRole('button', { name: '确认替换并导入' }).click();
+  await expect(
+    page.getByText('导入成功，个人记录已按备份恢复。公共任务缓存已保留。'),
+  ).toBeVisible();
+  await expect(second.getByRole('alert')).toContainText(/本地数据已.*重置/);
+  await page.goto('/profile');
+  await expect(page.getByText('10 XP · 1 次完成')).toBeVisible();
+  await page.goto('/archive');
+  await expect(page.getByText('要恢复的原始记录')).toBeVisible();
+  await expect(page.getByRole('img', { name: '这次经历的私人照片' })).toBeVisible();
+  await page.goto('/settings');
+  await page.getByLabel('选择人生支线 ZIP 备份').setInputFiles(backupPath);
+  await page
+    .getByRole('checkbox', { name: '我确认用此备份替换全部个人记录，已导出需要保留的数据' })
+    .check();
+  await page.getByRole('button', { name: '确认替换并导入' }).click();
+  await expect(
+    page.getByText('导入成功，个人记录已按备份恢复。公共任务缓存已保留。'),
+  ).toBeVisible();
+  await page.reload();
+  await page.goto('/profile');
+  await expect(page.getByText('10 XP · 1 次完成')).toBeVisible();
 });

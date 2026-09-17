@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -14,9 +14,11 @@ import { db, useRuntime } from './runtime';
 
 export function useAction() {
   const [busy, setBusy] = useState(false);
+  const locked = useRef(false);
   const [error, setError] = useState('');
   async function run(work: () => Promise<unknown>) {
-    if (busy) return;
+    if (locked.current) return;
+    locked.current = true;
     setBusy(true);
     setError('');
     try {
@@ -24,6 +26,7 @@ export function useAction() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '操作失败，请重试。');
     } finally {
+      locked.current = false;
       setBusy(false);
     }
   }
@@ -34,7 +37,7 @@ export function QuestCard({ quest, detail = false }: { quest: QuestSnapshot; det
   const favorite = useLiveQuery(() => db.favorites.get(quest.questId), [quest.questId]);
   const action = useAction();
   return (
-    <article className="card">
+    <article className={`card quest-card ${detail ? 'quest-detail' : ''}`}>
       <p className="eyebrow">
         {QUEST_CATEGORY_LABELS[quest.category]} · {'★'.repeat(quest.rewards.difficulty)}
       </p>
@@ -52,12 +55,6 @@ export function QuestCard({ quest, detail = false }: { quest: QuestSnapshot; det
         ))}
       </ul>
       <p className="safety">安全提醒：{quest.safetyNotes}</p>
-      <p>
-        基础奖励：{quest.rewards.xp} XP ·{' '}
-        {ATTRIBUTES.filter((a) => quest.rewards.attributes[a] > 0)
-          .map((a) => `${ATTRIBUTE_LABELS[a]} +${quest.rewards.attributes[a]}`)
-          .join(' / ')}
-      </p>
       {detail && (
         <>
           <p>{quest.description}</p>
@@ -66,13 +63,23 @@ export function QuestCard({ quest, detail = false }: { quest: QuestSnapshot; det
               <li key={i}>{step}</li>
             ))}
           </ol>
-          <p>
-            时段：{quest.timeOfDay} · 环境：{quest.environment}
+          <p className="quest-conditions">
+            时段：{quest.timeOfDay} · {quest.environment}
+            <br />
+            准备：{quest.preparation || '无需额外准备'}
           </p>
-          <p>准备：{quest.preparation || '无需额外准备'}</p>
-          <p>重复完成奖励递减至基础值的 50%、25%、10%；经验与正属性最低 1。</p>
+          <details className="reward-rules">
+            <summary>重复体验的奖励规则</summary>
+            <p>重复完成奖励递减至基础值的 50%、25%、10%；经验与正属性最低 1。</p>
+          </details>
         </>
       )}
+      <p className="reward-strip">
+        基础奖励：{quest.rewards.xp} XP ·{' '}
+        {ATTRIBUTES.filter((a) => quest.rewards.attributes[a] > 0)
+          .map((a) => `${ATTRIBUTE_LABELS[a]} +${quest.rewards.attributes[a]}`)
+          .join(' / ')}
+      </p>
       <button
         className="secondary"
         disabled={action.busy}

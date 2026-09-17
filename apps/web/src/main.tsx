@@ -4,17 +4,12 @@ import { RouterProvider } from 'react-router/dom';
 import { router } from './app/router';
 import './app/styles.css';
 import './app/pixel-theme.css';
-import { initializeTheme, ThemeProvider } from './app/theme';
-
-initializeTheme();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing application root');
 
 createRoot(root).render(
   <StrictMode>
-    <ThemeProvider>
-      <RouterProvider router={router} />
-    </ThemeProvider>
+    <RouterProvider router={router} />
   </StrictMode>,
 );

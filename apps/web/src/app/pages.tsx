@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ArchiveImport } from './archive-import';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -12,99 +13,223 @@ import type { QuestSnapshot } from '@sidequest/contracts';
 import { getBeijingDate } from '@sidequest/domain';
 import { db, usePageEvent, useRuntime } from './runtime';
 import { PhotoView, QuestCard, RecordForm, useAction } from './components';
-import { recommend, restartRecommendations } from '../services/recommendations';
+import { restartRecommendations } from '../services/recommendations';
 import { deletePersonalData, exportArchive } from '../services/export';
-import { PixelScene, ThemePicker } from './theme';
+import { ActivePanel, Adventurer, Avatar, CompletionPanel } from './journey';
+import {
+  currentRecommendation,
+  chooseRecommendation,
+  clearRecommendation,
+} from '../services/recommendations';
 
 const formatDate = (value: string) => new Date(value).toLocaleString('zh-CN');
 const statusLabels = { in_progress: '进行中', completed: '已完成', abandoned: '已放弃' };
 export function HomePage() {
-  const { network, refresh, service } = useRuntime();
+  const { network, refresh, service, now } = useRuntime();
   usePageEvent('home_view');
   const action = useAction();
   const catalog = useLiveQuery(() => db.catalog.get('catalog'));
   const active = useLiveQuery(() => db.quests.where('status').equals('in_progress').toArray());
-  const [selected, setSelected] = useState<QuestSnapshot>();
-  const [exhausted, setExhausted] = useState(false);
-  const [category, setCategory] = useState('');
-  const valid = catalog && Date.parse(catalog.expiresAt) > Date.now();
+  const [selected, setSelected] = useState<string | null>();
+  const [activeId, setActiveId] = useState('');
+  const [completedId, setCompletedId] = useState('');
+  const valid = Boolean(catalog && Date.parse(catalog.expiresAt) > now);
+  const current =
+    active?.find((q) => q.id === activeId) ??
+    active?.find((q) => q.source.kind === 'ordinary') ??
+    active?.[0];
+  const task = catalog?.tasks.find((q) => q.questId === selected);
+  useEffect(() => {
+    if (
+      !valid ||
+      !catalog ||
+      active === undefined ||
+      current ||
+      completedId ||
+      selected !== undefined
+    )
+      return;
+    void action.run(async () => {
+      const choice = currentRecommendation(catalog.tasks, sessionStorage);
+      setSelected(choice?.questId ?? null);
+      if (choice) {
+        const requestId = crypto.randomUUID();
+        void service.recordView('recommend_request', requestId).catch(() => {});
+        void service
+          .recordView('quest_impression', `${requestId}:impression`, choice.questId)
+          .catch(() => {});
+      }
+    });
+  }, [catalog, valid, selected, active, current, completedId]);
+  async function pick() {
+    if (!catalog || !valid) throw new Error('任务缓存已过期，请联网重试。');
+    const requestId = crypto.randomUUID();
+    const choice = chooseRecommendation(catalog.tasks, sessionStorage);
+    setSelected(choice?.questId ?? null);
+    void service.recordView('recommend_request', requestId).catch(() => {});
+    if (task)
+      void service.recordView('quest_reroll', `${requestId}:reroll`, task.questId).catch(() => {});
+    if (choice)
+      void service
+        .recordView('quest_impression', `${requestId}:impression`, choice.questId)
+        .catch(() => {});
+  }
   return (
-    <section className="page">
-      <div className="hero">
-        <PixelScene />
-        {active?.map((quest) => (
-          <p className="notice" key={quest.id}>
-            正在进行：<Link to={`/executions/${quest.id}`}>{quest.snapshot.title}</Link>（
-            {quest.source.kind === 'daily' ? '今日' : '普通'}支线）
-          </p>
-        ))}
-        <p className="eyebrow">日常之外，还有支线</p>
-        <h1>
-          给今天留一点
-          <br />
-          意料之外。
-        </h1>
-        <p className="description">发现一件现实中的小事，去体验，再记下属于你的故事。</p>
-        <div className="actions">
-          <button
-            disabled={!valid || !catalog.tasks.length}
-            onClick={() =>
-              void action.run(async () => {
-                if (!catalog || Date.parse(catalog.expiresAt) <= Date.now())
-                  throw new Error('任务缓存已过期，请刷新。');
-                const requestId = crypto.randomUUID();
-                void service.recordView('recommend_request', requestId).catch(() => {});
-                if (selected)
-                  void service
-                    .recordView('quest_reroll', `${requestId}:reroll`, selected.questId)
-                    .catch(() => {});
-                const quest = recommend(catalog.tasks, sessionStorage);
-                if (quest)
-                  void service
-                    .recordView('quest_impression', `${requestId}:impression`, quest.questId)
-                    .catch(() => {});
-                setSelected(quest ?? undefined);
-                setExhausted(!quest);
-              })
-            }
-          >
-            {selected ? '换一个' : '随机一条支线'}
-          </button>
-          <Link className="button secondary" to="/daily">
-            看看今日支线
-          </Link>
+    <section className="page home-page">
+      <Adventurer />
+      <div className="home-layout">
+        <div>
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">SIDEQUEST / 日常之外</p>
+              <h1>
+                {completedId ? '今天，多了一段故事' : current ? '进行中的支线' : '你的下一段小冒险'}
+              </h1>
+            </div>
+            <span className="status-tag">
+              {completedId ? '已完成' : current ? '进行中' : '推荐中'}
+            </span>
+          </div>
+          <div className="quest-panel">
+            <img
+              className="town-banner"
+              src="/art/town-dusk.png"
+              alt="黄昏小镇，书店亮起窗灯，背包旅人正准备出发"
+            />
+            {completedId ? (
+              <CompletionPanel
+                key={completedId}
+                id={completedId}
+                next={() => {
+                  setCompletedId('');
+                  clearRecommendation(sessionStorage);
+                  setSelected(undefined);
+                }}
+              />
+            ) : current ? (
+              <>
+                <div className="active-switch actions" aria-label="进行中的支线切换">
+                  {active?.map((q) => (
+                    <button
+                      className="secondary"
+                      aria-pressed={q.id === current.id}
+                      key={q.id}
+                      onClick={() => setActiveId(q.id)}
+                    >
+                      {q.source.kind === 'ordinary' ? '普通支线' : '今日支线'} · {q.snapshot.title}
+                    </button>
+                  ))}
+                </div>
+                <ActivePanel key={current.id} quest={current} onComplete={setCompletedId} />
+              </>
+            ) : valid && task ? (
+              <>
+                <QuestCard quest={task} detail />
+                <div className="task-controls">
+                  <button
+                    disabled={action.busy}
+                    onClick={() =>
+                      void action.run(async () => {
+                        if (!valid) throw new Error('缓存已过期，请重试同步。');
+                        await service.accept(
+                          task.questId,
+                          { kind: 'ordinary' },
+                          crypto.randomUUID(),
+                        );
+                      })
+                    }
+                  >
+                    接取支线
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={action.busy}
+                    onClick={() => void action.run(pick)}
+                  >
+                    换一条
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="panel-empty">
+                <h2>
+                  {valid && selected === null && catalog?.tasks.length
+                    ? '这一轮已经全部看过了。'
+                    : valid && selected
+                      ? '这条支线已更新或下架'
+                      : '小镇正在准备新的支线'}
+                </h2>
+                <p>
+                  {valid
+                    ? '可以浏览任务库，或开启下一轮探索。'
+                    : '暂无有效任务缓存，请联网同步。已有支线和存档仍可使用。'}
+                </p>
+                {valid && Boolean(catalog?.tasks.length) ? (
+                  <button
+                    disabled={action.busy}
+                    onClick={() =>
+                      void action.run(async () => {
+                        restartRecommendations(sessionStorage);
+                        await pick();
+                      })
+                    }
+                  >
+                    开启新一轮
+                  </button>
+                ) : (
+                  <button disabled={action.busy} onClick={() => void action.run(refresh)}>
+                    重试内容同步
+                  </button>
+                )}
+              </div>
+            )}
+            {action.error && (
+              <p className="panel-error" role="alert">
+                {action.error}
+              </p>
+            )}
+          </div>
+          <div className="discovery-links">
+            <Link to="/daily">
+              <span>今日支线</span>
+              <small>今天限定的一次小体验</small>
+              <b aria-hidden="true">↗</b>
+            </Link>
+            <Link to="/library">
+              <span>浏览任务库</span>
+              <small>按兴趣，慢慢逛一逛</small>
+              <b aria-hidden="true">↗</b>
+            </Link>
+          </div>
         </div>
+        <aside className="home-aside">
+          <p className="eyebrow">TRAVEL NOTES</p>
+          <h2>小事，也值得出发。</h2>
+          <p>不用做得多么了不起。走一条新路，留意一种颜色，就能为今天添一段故事。</p>
+          <div className="aside-line" />
+          <Link to="/quests">打开我的任务日志 →</Link>
+          <Link to="/profile">看看冒险者档案 →</Link>
+          <p className="muted">按自己的节奏，体验真实的生活。</p>
+        </aside>
+      </div>
+      {!valid && (
         <p className="muted" role="status">
           {network}
         </p>
-        <button
-          className="secondary"
-          disabled={action.busy}
-          onClick={() => void action.run(refresh)}
-        >
-          刷新任务库
-        </button>
-        {!valid && <p className="notice">暂无有效任务缓存，请联网刷新。已有支线和存档仍可使用。</p>}
-        {valid && !catalog.tasks.length && <p>暂无已发布内容，请先在运营后台审核发布任务。</p>}
-        {action.error && <p role="alert">{action.error}</p>}
-        {exhausted && (
-          <div className="notice">
-            <p>这一轮已经全部看过了。</p>
-            <button
-              onClick={() => {
-                restartRecommendations(sessionStorage);
-                setExhausted(false);
-              }}
-            >
-              开启新一轮
-            </button>
-          </div>
-        )}
-      </div>
-      {selected && valid && catalog.tasks.some((task) => task.versionId === selected.versionId) && (
-        <QuestCard quest={selected} />
       )}
-      <h2>按兴趣逛逛</h2>
+    </section>
+  );
+}
+export function LibraryPage() {
+  const { now } = useRuntime();
+  const catalog = useLiveQuery(() => db.catalog.get('catalog'));
+  const [category, setCategory] = useState('');
+  const valid = catalog && Date.parse(catalog.expiresAt) > now;
+  return (
+    <section className="page">
+      <p className="eyebrow">TOWN NOTICEBOARD</p>
+      <h1>任务库</h1>
+      <p>挑一件适合此刻的小事。</p>
       <div className="actions">
         <button className="secondary" aria-pressed={!category} onClick={() => setCategory('')}>
           全部
@@ -126,6 +251,10 @@ export function HomePage() {
             .filter((task) => !category || task.category === category)
             .map((task) => <QuestCard key={task.questId} quest={task} />)}
       </div>
+      {(!valid || !catalog.tasks.length) && <Empty title="暂时没有可浏览的任务" />}
+      <Link className="text-link" to="/settings">
+        内容同步与设置
+      </Link>
     </section>
   );
 }
@@ -158,15 +287,23 @@ export function QuestDetail() {
   );
 }
 export function MyQuests() {
+  const [completedId, setCompletedId] = useState('');
   const [tab, setTab] = useState('in_progress');
   const quests = useLiveQuery(() => db.quests.orderBy('acceptedAt').reverse().toArray());
   const favorites = useLiveQuery(() => db.favorites.orderBy('createdAt').reverse().toArray());
   return (
     <section className="page">
+      <p className="eyebrow">QUEST JOURNAL</p>
       <h1>我的支线</h1>
+      {completedId && <CompletionPanel key={completedId} id={completedId} />}
       <p>普通支线最多一条进行中；今日支线独立，不占普通名额。</p>
-      <div className="actions">
-        {[...Object.entries(statusLabels), ['favorites', '想做']].map(([key, label]) => (
+      <div className="actions journal-tabs">
+        {[
+          ['in_progress', '进行中'],
+          ['completed', '已完成'],
+          ['favorites', '想做'],
+          ['abandoned', '历史 · 已放弃'],
+        ].map(([key, label]) => (
           <button
             key={key}
             className="secondary"
@@ -182,7 +319,7 @@ export function MyQuests() {
           {favorites?.map((item) => (
             <QuestCard key={item.questId} quest={item.snapshot} />
           ))}
-          {!favorites?.length && <p>还没有想做的支线。</p>}
+          {!favorites?.length && <Empty title="还没有想做的支线" />}
         </div>
       ) : (
         <div className="grid">
@@ -197,16 +334,15 @@ export function MyQuests() {
                 <h2>
                   <Link to={`/executions/${quest.id}`}>{quest.snapshot.title}</Link>
                 </h2>
-                <p>接取于 {formatDate(quest.acceptedAt)}</p>
+                <p className="muted">接取于 {formatDate(quest.acceptedAt)}</p>
+                {quest.status === 'in_progress' && (
+                  <ActivePanel quest={quest} compact onComplete={setCompletedId} />
+                )}
                 {quest.endReason === 'expired' && <p>已过期，自动放弃</p>}
                 {quest.endReason === 'safety' && <p>因安全原因下架，自动放弃</p>}
               </article>
             ))}
-          {!quests?.some((quest) => quest.status === tab) && (
-            <p>
-              这里还没有记录。<Link to="/">去发现一条支线</Link>
-            </p>
-          )}
+          {!quests?.some((quest) => quest.status === tab) && <Empty title="这里还没有记录" />}
         </div>
       )}
       <Link className="text-link" to="/archive">
@@ -217,15 +353,12 @@ export function MyQuests() {
 }
 export function ExecutionPage() {
   const { id = '' } = useParams();
-  const { service } = useRuntime();
-  const navigate = useNavigate();
-  const action = useAction();
   const quest = useLiveQuery(() => db.quests.get(id), [id]);
   const completion = useLiveQuery(
     () => db.completions.where('userQuestId').equals(id).first(),
     [id],
   );
-  const [operationId] = useState(() => crypto.randomUUID());
+  const [completedId, setCompletedId] = useState('');
   if (!quest) return <Empty title="执行记录不存在" />;
   return (
     <section className="page">
@@ -236,33 +369,10 @@ export function ExecutionPage() {
           : '普通支线'}{' '}
         · {statusLabels[quest.status]}
       </p>
-      <QuestCard quest={quest.snapshot} detail />
-      {quest.status === 'in_progress' ? (
-        <>
-          <h2>记下这次经历</h2>
-          <p>文字和图片均可跳过。完成后不可撤销。</p>
-          <RecordForm
-            submitLabel="确认完成（不可撤销）"
-            submit={async (note, city, photo) => {
-              const completionId = await service.complete(id, operationId, {
-                note,
-                city,
-                ...(photo ? { photo } : {}),
-              });
-              void navigate(`/archive/${completionId}`);
-            }}
-          />
-          <button
-            className="secondary"
-            disabled={action.busy}
-            onClick={() => {
-              if (window.confirm('放弃这次支线？不会扣除已有奖励。'))
-                void action.run(() => service.abandon(id, crypto.randomUUID()));
-            }}
-          >
-            放弃这次支线
-          </button>
-        </>
+      {completedId ? (
+        <CompletionPanel id={completedId} />
+      ) : quest.status === 'in_progress' ? (
+        <ActivePanel key={quest.id} quest={quest} onComplete={setCompletedId} />
       ) : (
         <p>
           {quest.endReason === 'expired'
@@ -277,7 +387,6 @@ export function ExecutionPage() {
           查看完成存档
         </Link>
       )}
-      {action.error && <p role="alert">{action.error}</p>}
     </section>
   );
 }
@@ -332,7 +441,7 @@ export function ArchivePage() {
             </article>
           ))}
       </div>
-      {!records?.length && <p>完成第一条支线后，会在这里留下你的经历。</p>}
+      {!records?.length && <Empty title="完成第一条支线，留下你的经历" />}
     </section>
   );
 }
@@ -370,6 +479,7 @@ export function ArchiveDetail() {
         {...(record.photoId ? { existingPhotoId: record.photoId } : {})}
         submitLabel="保存记录"
         submit={async (note, city, photo) => {
+          setSaved(false);
           await service.saveRecord(record.id, note, city, photo);
           setSaved(true);
         }}
@@ -389,6 +499,9 @@ export function ProfilePage() {
   usePageEvent('profile_view');
   const { service } = useRuntime();
   const growth = useLiveQuery(() => service.growth(), [service]);
+  const recent = useLiveQuery(() =>
+    db.completions.orderBy('completedAt').reverse().limit(3).toArray(),
+  );
   if (!growth) return <p>读取成长记录…</p>;
   const max = Math.max(1, ...Object.values(growth.attributes));
   const point = (index: number, ratio: number) => {
@@ -397,61 +510,83 @@ export function ProfilePage() {
   };
   return (
     <section className="page">
-      <h1>六边形角色卡</h1>
-      <p className="stat">
-        Lv. {growth.level}{' '}
-        <span>
-          {growth.totalXp} XP · {growth.completed} 次完成
-        </span>
-      </p>
-      <progress max={1} value={growth.progress} />
-      <p>距离下一级还需 {growth.xpToNextLevel} XP</p>
-      <svg
-        className="radar"
-        viewBox="0 0 300 300"
-        role="img"
-        aria-label="六维经历相对分布，具体数值见下方列表"
-      >
-        <polygon
-          points={ATTRIBUTES.map((_, i) => point(i, 1)).join(' ')}
-          fill="none"
-          stroke="#8c9c75"
-        />
-        <polygon
-          points={ATTRIBUTES.map((attribute, i) =>
-            point(i, growth.attributes[attribute] / max),
-          ).join(' ')}
-          fill="#8c9c7580"
-          stroke="#243e35"
-        />
-        {ATTRIBUTES.map((attribute, i) => {
-          const [x, y] = point(i, 1.27).split(',');
-          return (
-            <text
-              key={attribute}
-              x={x}
-              y={y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize="12"
-            >
-              {ATTRIBUTE_LABELS[attribute]}
-            </text>
-          );
-        })}
-      </svg>
-      <dl className="attribute-list">
-        {ATTRIBUTES.map((attribute) => (
-          <div key={attribute}>
-            <dt>{ATTRIBUTE_LABELS[attribute]}</dt>
-            <dd>{growth.attributes[attribute]}</dd>
-          </div>
-        ))}
-      </dl>
+      <p className="eyebrow">ADVENTURER PROFILE</p>
+      <h1>冒险者档案</h1>
+      <div className="profile-panel">
+        <div className="profile-identity">
+          <Avatar />
+          <h2>生活冒险者</h2>
+          <p>每一段经历，都在这里留下形状。</p>
+          <p className="stat">
+            Lv. {growth.level}{' '}
+            <span>
+              {growth.totalXp} XP · {growth.completed} 次完成
+            </span>
+          </p>
+          <progress max={1} value={growth.progress} />
+          <p>距离下一级还需 {growth.xpToNextLevel} XP</p>
+        </div>
+        <div className="profile-chart">
+          <h2>六维经历</h2>
+          <svg
+            className="radar"
+            viewBox="0 0 300 300"
+            role="img"
+            aria-label="六维经历相对分布，具体数值见下方列表"
+          >
+            <polygon
+              points={ATTRIBUTES.map((_, i) => point(i, 1)).join(' ')}
+              fill="none"
+              stroke="#8c9c75"
+            />
+            <polygon
+              points={ATTRIBUTES.map((attribute, i) =>
+                point(i, growth.attributes[attribute] / max),
+              ).join(' ')}
+              fill="#8c9c7580"
+              stroke="#243e35"
+            />
+            {ATTRIBUTES.map((attribute, i) => {
+              const [x, y] = point(i, 1.27).split(',');
+              return (
+                <text
+                  key={attribute}
+                  x={x}
+                  y={y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="12"
+                >
+                  {ATTRIBUTE_LABELS[attribute]}
+                </text>
+              );
+            })}
+          </svg>
+          <dl className="attribute-list">
+            {ATTRIBUTES.map((attribute) => (
+              <div key={attribute}>
+                <dt>{ATTRIBUTE_LABELS[attribute]}</dt>
+                <dd>{growth.attributes[attribute]}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
       <p>
         {growth.completed < 3 ? '数据形成中，先去体验几件小事。' : '图形展示各项经历的相对分布。'}{' '}
         属性仅代表经历倾向，不是人格、智力、健康或能力评价。
       </p>
+      <h2>最近经历</h2>
+      <div className="recent-list">
+        {recent?.map((record) => (
+          <Link key={record.id} to={`/archive/${record.id}`}>
+            <span>{formatDate(record.completedAt)}</span>
+            <span>{record.note || '一次值得记住的小冒险'}</span>
+            <b>+{record.reward.xp} XP</b>
+          </Link>
+        ))}
+        {!recent?.length && <Empty title="故事从第一条支线开始" />}
+      </div>
       <Link className="text-link" to="/archive">
         查看所有存档
       </Link>
@@ -539,74 +674,101 @@ export function DailyPage() {
   );
 }
 export function SettingsPage() {
-  const { service } = useRuntime();
+  const { service, refresh, network } = useRuntime();
   const action = useAction();
   const [confirmation, setConfirmation] = useState(false);
   return (
     <section className="page">
       <h1>设置</h1>
-      <ThemePicker />
-      <p>个人记录和照片仅保存在当前浏览器。清理本站数据会丢失记录，暂不支持云备份或跨设备恢复。</p>
-      <h2>导出私人存档</h2>
-      <p>ZIP 包含 JSON 数据和照片，含私密信息，请妥善保管；当前不支持导入恢复。</p>
-      <button
-        disabled={action.busy}
-        onClick={() =>
-          void action.run(async () => {
-            const blob = await exportArchive(db);
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `sidequest-${getBeijingDate(new Date())}.zip`;
-            link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 60000);
-          })
-        }
-      >
-        导出全部记录
-      </button>
-      <h2>清除本地个人数据</h2>
-      <p>
-        删除存档、照片、任务、奖励及本地待发统计事件，重建匿名身份；公共内容缓存保留。删除不可恢复。
-      </p>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={confirmation}
-          onChange={(e) => setConfirmation(e.target.checked)}
-        />
-        我理解删除不可恢复，已妥善导出需要的记录
-      </label>
-      <button
-        className="danger"
-        disabled={!confirmation || action.busy}
-        onClick={() =>
-          void action.run(async () => {
-            await deletePersonalData(db, service.profileId);
-            sessionStorage.removeItem('sidequest-recommendations-v1');
-            location.reload();
-          })
-        }
-      >
-        确认删除个人数据
-      </button>
-      <h2>隐私与统计</h2>
-      <p>
-        首版不上传任何个人统计事件、记录正文、照片或精确位置。统计仅保存在当前浏览器，随个人数据一起导出或删除。
-      </p>
-      <Link className="text-link" to="/stats">
-        查看本地统计
-      </Link>
+      <div className="settings-panel">
+        <h2>外观</h2>
+        <p>温暖像素小镇</p>
+        <p className="muted">黄昏小镇与背包，走进生活的小冒险。</p>
+      </div>
+      <div className="settings-panel">
+        <h2>个人数据</h2>
+        <p>
+          个人记录和照片仅保存在当前浏览器。清理本站数据会丢失记录，请定期导出 ZIP
+          备份；可在本机或其他浏览器手动导入，不提供云备份或自动同步。
+        </p>
+        <h2>导出私人存档</h2>
+        <p>ZIP 包含任务、存档、奖励和照片，含私密信息，请妥善保管；可通过下方入口导入恢复。</p>
+        <button
+          disabled={action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              const blob = await exportArchive(db);
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `sidequest-${getBeijingDate(new Date())}.zip`;
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
+            })
+          }
+        >
+          导出全部记录
+        </button>
+        <ArchiveImport />
+        <h2>清除本地个人数据</h2>
+        <p>
+          删除存档、照片、任务、奖励及本地待发统计事件，重建匿名身份；公共内容缓存保留。删除无法撤销，仅可从事先导出的备份恢复。
+        </p>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={confirmation}
+            onChange={(e) => setConfirmation(e.target.checked)}
+          />
+          我理解删除无法撤销，已妥善导出需要的记录
+        </label>
+        <button
+          className="danger"
+          disabled={!confirmation || action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              await deletePersonalData(db, service.profileId);
+              sessionStorage.removeItem('sidequest-recommendations-v1');
+              clearRecommendation(sessionStorage);
+              location.reload();
+            })
+          }
+        >
+          确认删除个人数据
+        </button>
+      </div>
+      <div className="settings-panel">
+        <h2>隐私与统计</h2>
+        <p>
+          首版不上传任何个人统计事件、记录正文、照片或精确位置。统计仅保存在当前浏览器，随个人数据一起导出或删除。
+        </p>
+        <Link className="text-link" to="/stats">
+          查看本地统计
+        </Link>
+      </div>
+      <div className="settings-panel">
+        <h2>公共内容</h2>
+        <p role="status">{network}</p>
+        <button
+          className="secondary"
+          disabled={action.busy}
+          onClick={() => void action.run(refresh)}
+        >
+          刷新任务库
+        </button>
+        <p className="muted">启动、回到前台与恢复网络时自动同步；个人记录始终留在本机。</p>
+      </div>
       {action.error && <p role="alert">{action.error}</p>}
     </section>
   );
 }
 export function Empty({ title }: { title: string }) {
   return (
-    <section className="intro">
-      <h1>{title}</h1>
+    <section className="intro empty-state">
+      <Avatar />
+      <h2>{title}</h2>
       <Link className="text-link" to="/">
-        回到发现
+        发现一条支线
       </Link>
     </section>
   );
