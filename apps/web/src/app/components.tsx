@@ -54,10 +54,9 @@ export function QuestCard({ quest, detail = false }: { quest: QuestSnapshot; det
           <li key={i}>{tag}</li>
         ))}
       </ul>
-      <p className="safety">安全提醒：{quest.safetyNotes}</p>
+      <p>{quest.description}</p>
       {detail && (
         <>
-          <p>{quest.description}</p>
           <ol>
             {quest.steps.map((step, i) => (
               <li key={i}>{step}</li>
@@ -68,6 +67,7 @@ export function QuestCard({ quest, detail = false }: { quest: QuestSnapshot; det
             <br />
             准备：{quest.preparation || '无需额外准备'}
           </p>
+          <p className="safety">安全提醒：{quest.safetyNotes}</p>
           <details className="reward-rules">
             <summary>重复体验的奖励规则</summary>
             <p>重复完成奖励递减至基础值的 50%、25%、10%；经验与正属性最低 1。</p>
